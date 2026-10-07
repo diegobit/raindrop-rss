@@ -1,0 +1,15 @@
+.env
+.venv/
+data/
+docs/
+tests/
+__pycache__/
+*.pyc
+*.tgz
+*.tar.gz
+config/settings.toml
+config/raindrop-token
+subscriptions/feeds.json
+rss-import-app.json
+reeder-feeds.json
+reeder-saved-items.json

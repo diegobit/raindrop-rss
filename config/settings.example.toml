@@ -1,0 +1,21 @@
+# Copy to config/settings.toml. Paths resolve relative to this file.
+
+# Raindrop collection that receives every article. Must already exist.
+collection_id = 0
+
+feeds_file = "../subscriptions/feeds.json"
+data_dir   = "../data"
+token_file = "raindrop-token"        # one line: a Raindrop personal test token
+
+port = 38471                         # published on host loopback by compose
+bind = "0.0.0.0"                     # required inside the container; the default is 127.0.0.1
+
+# Optional host command. The alert text is appended as the last argument.
+# A missing command does not stop saving; the alert is retried next pass.
+# tg_command = ["tg", "--"]
+
+# interval_seconds  = 3600           # hourly
+# request_timeout   = 15             # seconds per HTTP request
+# pass_seconds      = 300            # whole-pass budget; leftovers run next pass
+# max_feed_bytes    = 2097152
+# notify_timeout    = 20
