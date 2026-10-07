@@ -1,4 +1,4 @@
-"""One server-rendered status page with an Add feed form. Nothing else."""
+"""One server-rendered status page, with add and confirmed removal."""
 
 import html
 import logging
@@ -7,7 +7,7 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit
 
 from .config import ConfigError, display_url, normalize_url
 
@@ -18,27 +18,65 @@ SOCKET_TIMEOUT = 15
 REFRESH_SECONDS = 30
 
 HEALTH = {
-    'pending': ('&#9675;', 'pending'),
-    'healthy': ('&#10003;', 'healthy'),
-    'error': ('&#9888;', 'error'),
-    'gone': ('&#10005;', 'gone'),
+    'pending': ('pending', '<circle cx="8" cy="8" r="4.25" fill="none" stroke="currentColor" stroke-width="1.6"/>'),
+    'healthy': ('healthy', '<path d="M3.8 8.4 6.6 11.1 12.2 4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'),
+    'error': ('error', '<path d="M8 2.8 14.4 14H1.6L8 2.8Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 6.4v3.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>'),
+    'gone': ('gone', '<path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'),
 }
 
 STYLE = '''
-:root { color-scheme: light dark; }
-body { font-family: system-ui, sans-serif; margin: 1.5rem; max-width: 60rem; line-height: 1.4; }
+:root {
+  color-scheme: light dark;
+  --ink: light-dark(#1c1b19, #f4f1ea);
+  --muted: light-dark(#6e6a62, #a8a49c);
+  --line: light-dark(#e4e0d8, #2e2d2a);
+  --paper: light-dark(#f6f4ef, #141413);
+  --chip: light-dark(#fff, #22211e);
+  --ok: light-dark(#0f7a38, #8ed7a6);
+  --warn: light-dark(#9a4b10, #f0b27a);
+  --bad: light-dark(#a32632, #f3a3a8);
+}
+* { box-sizing: border-box; }
+body {
+  font-family: system-ui, sans-serif; margin: 0 auto; max-width: 68rem;
+  padding: 2rem 1.25rem 3rem; line-height: 1.45; background: var(--paper); color: var(--ink);
+}
+h1 { font-size: 1.35rem; font-weight: 650; letter-spacing: -.02em; margin: 0 0 .4rem; }
+h2 { font-size: 1.15rem; font-weight: 650; }
 table { border-collapse: collapse; width: 100%; }
-th, td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid #8884; vertical-align: top; }
-th { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; opacity: .7; }
-td.gone, td.error { font-weight: 600; }
-.counts span { display: inline-block; margin-right: 1.5rem; }
+th, td { text-align: left; padding: .75rem .5rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.counts span { display: inline-block; margin: 0 1.4rem 0 0; }
 .notice { padding: .6rem .8rem; border-left: 4px solid currentColor; margin: 1rem 0; }
-.bad { color: #b3261e; }
-.good { color: #1b6b3a; }
-form { margin-top: 1rem; display: grid; gap: .5rem; max-width: 32rem; }
-input { padding: .4rem; font: inherit; }
-button { padding: .5rem 1rem; font: inherit; width: fit-content; }
-small { opacity: .7; }
+.bad { color: var(--bad); }
+.good { color: var(--ok); }
+.feed { display: flex; gap: .7rem; align-items: center; }
+.mark {
+  position: relative; display: inline-grid; width: 1.4rem; height: 1.4rem; flex: none;
+  place-items: center; border-radius: .35rem; background: light-dark(#e8e4db, #2a2926);
+  color: var(--muted); font-size: .72rem; font-weight: 700;
+}
+.ico { position: absolute; inset: 0; border-radius: inherit; background: center / cover no-repeat; }
+.name { font-weight: 620; }
+.url, .id { color: var(--muted); font-size: .82rem; }
+.url { word-break: break-all; }
+.badge { white-space: nowrap; display: inline-flex; align-items: center; gap: .35rem; font-weight: 620; }
+.glyph { width: 1rem; height: 1rem; flex: none; }
+.healthy .badge { color: var(--ok); }
+.error .badge { color: var(--warn); }
+.gone .badge { color: var(--bad); }
+.pending .badge { color: var(--muted); font-weight: 520; }
+.reason { display: block; margin-top: .25rem; color: var(--muted); font-weight: 450; }
+.actions a { color: var(--muted); text-decoration: none; }
+.actions a:hover { color: var(--bad); }
+.hint { color: var(--muted); font-size: .9rem; }
+.foot { margin: .4rem 0 0; }
+a.button, button {
+  display: inline-block; padding: .5rem 1rem; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--chip); color: inherit; text-decoration: none; font: inherit; cursor: pointer;
+}
+form { margin-top: 1rem; display: grid; gap: .6rem; max-width: 32rem; }
+input { padding: .45rem .55rem; font: inherit; border: 1px solid var(--line); border-radius: .4rem; background: var(--chip); color: inherit; }
 '''
 
 
@@ -50,6 +88,26 @@ def moment(value):
     if not value:
         return 'never'
     return datetime.fromtimestamp(value, timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+
+
+def site_icon(url):
+    """Favicon for the feed's host. Query strings stay out of the page."""
+    parts = urlsplit(url)
+    if parts.scheme not in ('http', 'https') or not parts.hostname:
+        return ''
+    return f'{parts.scheme}://{parts.hostname}/favicon.ico'
+
+
+def initial(tag):
+    for char in tag:
+        if char.isalnum():
+            return char.upper()
+    return '·'
+
+
+def glyph(health):
+    label, drawing = HEALTH.get(health, HEALTH['pending'])
+    return (f'<svg class="glyph" viewBox="0 0 16 16" aria-hidden="true">{drawing}</svg>', label)
 
 
 class Page:
@@ -94,29 +152,37 @@ class Page:
             f'<span>Saved: <b>{counts["saved"]}</b></span></p>'
             f'<p><small>{"Pass running." if state.get_meta("pass_running") else "Idle."} '
             f'Last pass {escape(moment(state.get_meta("last_pass_at")))}.</small></p>')
-        parts.append('<table><thead><tr><th>Tag</th><th>Feed</th><th>Health</th>'
-                     '<th>Last check</th><th>Last success</th><th>Latest article</th></tr></thead><tbody>')
+        parts.append('<table><thead><tr><th>Feed</th><th>Health</th>'
+                     '<th>Last check</th><th>Last success</th><th>Latest article</th>'
+                     '<th></th></tr></thead><tbody>')
         for feed in feeds:
             row = rows.get(feed['id']) or {}
             health = row.get('health', 'pending')
-            symbol, label = HEALTH.get(health, HEALTH['pending'])
-            detail = f'<br><small>{escape(row.get("error"))}</small>' if row.get('error') else ''
+            symbol, label = glyph(health)
+            reason = (f'<span class="reason">{escape(row["error"])}</span>'
+                      if row.get('error') else '')
+            icon = site_icon(feed['url'])
+            cover = f' style="background-image:url(\'{escape(icon)}\')"' if icon else ''
             parts.append(
-                f'<tr><td>{escape(feed["tag"])}</td>'
-                f'<td>{escape(display_url(feed["url"]))}<br><small>{escape(feed["id"])}</small></td>'
-                f'<td class="{escape(health)}">{symbol} {escape(label)}{detail}</td>'
+                '<tr><td><div class="feed">'
+                f'<span class="mark">{escape(initial(feed["tag"]))}'
+                f'<span class="ico"{cover}></span></span><div>'
+                f'<div class="name">{escape(feed["tag"])}</div>'
+                f'<div class="url">{escape(display_url(feed["url"]))}</div>'
+                f'<div class="id">{escape(feed["id"])}</div></div></div></td>'
+                f'<td class="health {escape(health)}"><span class="badge">{symbol} {escape(label)}</span>{reason}</td>'
                 f'<td>{escape(moment(row.get("attempted_at")))}</td>'
                 f'<td>{escape(moment(row.get("success_at")))}</td>'
-                f'<td>{escape(moment(row.get("latest_at")) if row.get("latest_at") else "none")}</td></tr>')
+                f'<td>{escape(moment(row.get("latest_at")) if row.get("latest_at") else "none")}</td>'
+                f'<td class="actions"><a href="/remove?id={escape(feed["id"])}">Remove</a></td></tr>')
         if not feeds:
             parts.append('<tr><td colspan="6">No subscriptions yet.</td></tr>')
         parts.append('</tbody></table>')
-        # The button sits below the list and opens the form on its own page, so
-        # the periodic refresh here cannot wipe out half-typed input.
+        # Add sits on its own page, below the list, so this refresh cannot
+        # wipe out half-typed input. Remove is a link for the same reason.
         parts.append(
-            '<p><a href="/add"><button type="button">Add feed</button></a></p>'
-            '<p><small>Edit or remove feeds directly in feeds.json; changes load on the next pass.</small></p>'
-            '</body></html>')
+            '<p class="hint">Edits in feeds.json apply on the next pass.</p>'
+            '<p class="foot"><a class="button" href="/add">Add feed</a></p></body></html>')
         return ''.join(parts).encode('utf-8')
 
     def form(self, message=None, bad=False, url='', tag=''):
@@ -136,6 +202,31 @@ class Page:
             f'value="{escape(tag)}"></label>'
             '<button type="submit">Add feed</button></form>'
             '<p><a href="/">Back to the feed list</a></p></body></html>')
+        return ''.join(parts).encode('utf-8')
+
+    def confirm_remove(self, ident, message=None, bad=False):
+        """Ask before a feed stops being polled. No auto-refresh."""
+        feeds, revision, _, _ = self.snapshot()
+        feed = next((item for item in feeds if item['id'] == ident), None)
+        parts = self.head(refresh=False)
+        if message:
+            parts.append(f'<p class="notice {"bad" if bad else "good"}">{escape(message)}</p>')
+        if feed is None:
+            parts.append('<h2>Feed not found</h2><p>That subscription is not in the list.</p>'
+                         '<p><a href="/">Back to the feed list</a></p></body></html>')
+            return ''.join(parts).encode('utf-8')
+        parts.append(
+            '<h2>Remove this feed?</h2>'
+            f'<p class="name">{escape(feed["tag"])}</p>'
+            f'<p class="url">{escape(display_url(feed["url"]))}</p>'
+            '<p>Polling stops. Articles already saved stay in Raindrop, and this feed\'s '
+            'history stays recorded.</p>'
+            '<form method="post" action="/remove">'
+            f'<input type="hidden" name="token" value="{escape(self.token)}">'
+            f'<input type="hidden" name="revision" value="{escape(revision)}">'
+            f'<input type="hidden" name="id" value="{escape(feed["id"])}">'
+            '<button type="submit">Remove feed</button></form>'
+            '<p><a href="/">Cancel</a></p></body></html>')
         return ''.join(parts).encode('utf-8')
 
     def valid_token(self, supplied):
@@ -164,6 +255,17 @@ class Page:
                     'Check the database before the next pass.'), True, '', ''
         return f'Added {display_url(normalized)}; its first check is scheduled now.', False, '', ''
 
+    def remove(self, form):
+        """Returns (message, failed). Never claims unconfirmed success."""
+        ident = form.get('id', [''])[0]
+        if not self.valid_token(form.get('token', [''])[0]):
+            return 'Form token rejected. Reload the page and try again.', True
+        try:
+            self.bridge.remove(form.get('revision', [''])[0], ident)
+        except ConfigError as exc:
+            return str(exc), True
+        return 'Removed. Polling for that feed has stopped.', False
+
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
@@ -183,7 +285,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
         self.send_header('X-Content-Type-Options', 'nosniff')
-        self.send_header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'")
+        self.send_header('Content-Security-Policy',
+                         "default-src 'none'; style-src 'unsafe-inline'; img-src http: https:")
         self.end_headers()
         self.wfile.write(body)
 
@@ -195,13 +298,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(200, page.render())
             elif path == '/add':
                 self.reply(200, page.form())
+            elif path == '/remove':
+                ident = parse_qs(self.path.split('?', 1)[1] if '?' in self.path else '').get('id', [''])[0]
+                self.reply(200, page.confirm_remove(ident))
             else:
                 self.reply(404, b'<!doctype html><p>Not found.')
         except sqlite3.Error:
             self.fail_safely()
 
     def do_POST(self):
-        if self.path != '/add':
+        path = self.path.split('?')[0]
+        if path not in ('/add', '/remove'):
             self.reply(404, b'<!doctype html><p>Not found.')
             return
         try:
@@ -213,9 +320,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         body = self.rfile.read(length)
         form = parse_qs(body.decode('utf-8', 'replace'), keep_blank_values=True)
+        page = self.server.page
         try:
-            message, bad, url, tag = self.server.page.add(form)
-            self.reply(200, self.server.page.form(message, bad, url, tag))
+            if path == '/add':
+                message, bad, url, tag = page.add(form)
+                self.reply(200, page.form(message, bad, url, tag))
+            else:
+                message, bad = page.remove(form)
+                self.reply(200, page.confirm_remove(form.get('id', [''])[0], message, bad) if bad
+                           else page.render(message))
         except sqlite3.Error:
             self.fail_safely()
 

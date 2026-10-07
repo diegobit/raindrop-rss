@@ -103,19 +103,12 @@ def generate_id(tag, taken):
     return candidate
 
 
-def add_feed(path, revision, url, tag, known_ids=()):
-    """Append one feed with an atomic replacement, refusing conflicting edits.
-
-    `known_ids` carries every feed ID SQLite has ever seen. A generated ID must
-    avoid those too: reusing a retired ID would inherit its cutoff and make a
-    different publisher's back catalogue look already-imported. Re-adding a feed
-    by writing its old ID into the file by hand still keeps that history.
-    """
-    feeds, current = read_feeds(path)
+def write_feeds(path, revision, feeds):
+    """Atomically replace feeds.json if it still matches revision."""
+    _, current = read_feeds(path)
     if current != revision:
-        raise ConfigError('Feed file changed since the page loaded; reload and try again')
-    taken = {existing['id'] for existing in feeds} | set(known_ids)
-    feeds = validate_feeds(feeds + [{'id': generate_id(tag, taken), 'url': url, 'tag': tag}])
+        raise ConfigError('Feed file changed while saving; reload and try again')
+    feeds = validate_feeds(feeds)
     temp = None
     try:
         # Keep the operator's permissions: the file may hold private query values.
@@ -139,6 +132,32 @@ def add_feed(path, revision, url, tag, known_ids=()):
         if temp is not None:
             temp.unlink(missing_ok=True)
     return feeds
+
+
+def add_feed(path, revision, url, tag, known_ids=()):
+    """Append one feed with an atomic replacement, refusing conflicting edits.
+
+    `known_ids` carries every feed ID SQLite has ever seen. A generated ID must
+    avoid those too: reusing a retired ID would inherit its cutoff and make a
+    different publisher's back catalogue look already-imported. Re-adding a feed
+    by writing its old ID into the file by hand still keeps that history.
+    """
+    feeds, current = read_feeds(path)
+    if current != revision:
+        raise ConfigError('Feed file changed since the page loaded; reload and try again')
+    taken = {existing['id'] for existing in feeds} | set(known_ids)
+    return write_feeds(path, current, feeds + [{'id': generate_id(tag, taken), 'url': url, 'tag': tag}])
+
+
+def remove_feed(path, revision, ident):
+    """Drop one subscription. The database keeps its cutoff and delivery history."""
+    feeds, current = read_feeds(path)
+    if current != revision:
+        raise ConfigError('Feed file changed since the page loaded; reload and try again')
+    kept = [feed for feed in feeds if feed['id'] != ident]
+    if len(kept) == len(feeds):
+        raise ConfigError('That feed is not in the list')
+    return write_feeds(path, current, kept)
 
 
 @dataclass(frozen=True)

@@ -60,7 +60,7 @@ uv pip install -r requirements.txt
 
 ## Using it
 
-The status page lists each feed's tag, address, and health. Healthy means the feed downloaded and parsed. The counts above the list are bookmarks waiting to be saved, bookmarks already saved, and bookmarks that need a look. The page refreshes every 30 seconds. **Add feed** opens its own form and leaves what you type alone. Edits you make directly in `feeds.json` apply on the next hourly pass.
+The status page lists each feed with its icon, address, and health. Healthy means the feed downloaded and parsed, and that state is shown in green. The counts above the list are bookmarks waiting to be saved, bookmarks already saved, and bookmarks that need a look. The page refreshes every 30 seconds. **Add feed** is at the bottom and opens its own form, so the refresh cannot clear what you type. **Remove** asks you to confirm; polling stops, and articles already saved stay saved. Edits you make directly in `feeds.json` apply on the next hourly pass.
 
 An article is saved when its publication date is later than the moment you added its feed, and not in the future. A later edit of an old post does not make it new. Each article URL is saved once.
 

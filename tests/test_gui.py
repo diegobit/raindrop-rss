@@ -97,7 +97,7 @@ class Rendering(Live):
     def test_the_add_button_comes_after_the_list_and_opens_the_form_page(self):
         self.serve(self.bridge(self.db))
         _, page = self.get()
-        self.assertLess(page.index('</table>'), page.index('Add feed</button>'))
+        self.assertLess(page.index('</table>'), page.index('>Add feed</a>'))
         self.assertIn('href="/add"', page)
         self.assertNotIn('<form', page, 'the refreshing page must carry no input fields')
 
@@ -127,6 +127,20 @@ class Rendering(Live):
         _, page = self.get()
         self.assertIn('Feed configuration error', page)
         self.assertIn('Alpha', page)
+
+    def test_each_feed_has_an_icon_and_healthy_stays_on_one_line(self):
+        bridge = self.bridge(self.db)
+        self.db.execute("UPDATE feeds SET health='healthy' WHERE id='alpha'")
+        self.serve(bridge)
+        _, page = self.get()
+        self.assertIn('white-space: nowrap', page)
+        self.assertIn('--ok: light-dark(#0f7a38, #8ed7a6)', page)
+        cell = re.search(r'class="health healthy">.*?</td>', page).group(0)
+        self.assertIn(' healthy</span>', cell)
+        self.assertNotIn('<br', cell)
+        self.assertEqual(page.count('class="glyph"'), 2)
+        self.assertIn("background-image:url('https://feeds.test/favicon.ico')", page)
+        self.assertNotIn('supersecret', page)
 
     def test_unknown_paths_are_not_found(self):
         self.serve(self.bridge(self.db))
@@ -223,6 +237,51 @@ class AddForm(Live):
         status, _ = self.post({**self.form_fields(), 'url': 'https://x.test/' + 'a' * 6000, 'tag': 'x'})
         self.assertEqual(status, 413)
         self.assertEqual(json.loads(self.feeds_file.read_text()), [])
+
+
+class RemoveFeed(Live):
+    def setUp(self):
+        super().setUp()
+        self.now = time.time()
+        self.subscribe('alpha', tag='Alpha')
+        self.db = self.state()
+        self.bridge_ = self.bridge(self.db)
+        self.cutoff(self.db, 'alpha', self.now - HOUR)
+        self.serve(self.bridge_)
+
+    def confirm(self):
+        status, page = self.get('/remove?id=alpha')
+        self.assertEqual(status, 200)
+        self.assertNotIn('http-equiv="refresh"', page)
+        self.assertIn('Remove this feed?', page)
+        self.assertIn('Alpha', page)
+        return dict(re.findall(r'name="(token|revision|id)" value="([^"]*)"', page))
+
+    def test_remove_asks_for_confirmation_then_stops_polling(self):
+        _, page = self.get()
+        self.assertIn('href="/remove?id=alpha"', page)
+        self.assertNotIn('<form', page)
+        fields = self.confirm()
+        status, done = self.post(fields, path='/remove')
+        self.assertEqual(status, 200)
+        self.assertIn('Removed.', done)
+        self.assertEqual(json.loads(self.feeds_file.read_text()), [])
+        self.assertEqual(self.db.feed('alpha')['added_at'], self.now - HOUR)
+        self.assertNotIn('Alpha', self.get()[1])
+
+    def test_a_wrong_token_does_not_remove_the_feed(self):
+        fields = self.confirm()
+        _, page = self.post({**fields, 'token': 'forged'}, path='/remove')
+        self.assertIn('Form token rejected', page)
+        self.assertEqual([item['id'] for item in json.loads(self.feeds_file.read_text())], ['alpha'])
+
+    def test_a_conflicting_edit_is_refused(self):
+        fields = self.confirm()
+        self.subscribe('manual')
+        before = self.feeds_file.read_text()
+        _, page = self.post(fields, path='/remove')
+        self.assertIn('Feed file changed', page)
+        self.assertEqual(self.feeds_file.read_text(), before)
 
 
 class Responsiveness(Live):

@@ -11,7 +11,7 @@ from urllib.parse import urljoin
 import feedparser
 
 from .adapters import HTTP, Raindrop, deadline, notify
-from .config import ConfigError, add_feed, display_url, normalize_url, read_feeds
+from .config import ConfigError, add_feed, display_url, normalize_url, read_feeds, remove_feed
 
 log = logging.getLogger(__name__)
 
@@ -108,6 +108,13 @@ class Bridge:
             if not self.reload():
                 raise ConfigError('Feed file saved but could not be reloaded; see the configuration error')
         self.wake.set()
+
+    def remove(self, revision, ident):
+        """Stop polling this feed. Its cutoff and queued deliveries stay."""
+        with self.guard:
+            remove_feed(self.settings.feeds_file, revision, ident)
+            if not self.reload():
+                raise ConfigError('Feed file saved but could not be reloaded; see the configuration error')
 
     # -- one pass ---------------------------------------------------------
 
