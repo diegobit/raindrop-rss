@@ -9,13 +9,29 @@ services:
     # Telegram credentials. Put RSS_UID/RSS_GID in .env; see the README.
     user: "${RSS_UID:-1000}:${RSS_GID:-1000}"
     ports:
-      - "127.0.0.1:${RSS_PORT:-38471}:38471"   # reach it remotely over an SSH tunnel
+      - "127.0.0.1:${RSS_PORT:-38471}:38471"   # host loopback; the tunnel uses the compose network
     volumes:
       - ./config:/app/config:ro     # settings.toml and raindrop-token, mode 600
       - ./subscriptions:/app/subscriptions   # a directory, so atomic replace works
       - ./data:/app/data
       # Alerts are a host command (tg_command). Mount that program, and any
       # secret files it reads, from a gitignored compose.override.yaml.
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  # Geekom public page. Started only when COMPOSE_PROFILES=tunnel.
+  # In the Cloudflare hostname, set the origin to http://raindrop-rss:38471.
+  # The page has no login; put a Cloudflare Access application on that hostname.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.0
+    profiles: [tunnel]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - raindrop-rss
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "5" }

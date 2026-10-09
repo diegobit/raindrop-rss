@@ -12,3 +12,4 @@ rss-import-app.json
 reeder-feeds.json
 reeder-saved-items.json
 compose.override.yaml
+dockertoken

@@ -9,6 +9,7 @@ Human setup is `README.md`. This file is the behavior that is easy to get wrong.
 - `subscriptions/feeds.json` is the subscription list. The filled-in file is gitignored. The example is committed.
 - `data/state.db` holds cutoffs, feed health, and the delivery queue. `data/writer.lock` is the exclusive writer lock.
 - Compose publishes `127.0.0.1:38471` to container port 38471. Inside the container, `bind` stays `0.0.0.0`. The image is `linux/amd64`. Logs rotate at 5 × 10 MB. Restart policy is `unless-stopped`.
+- The `tunnel` profile runs `cloudflared`. It starts only when `.env` sets `COMPOSE_PROFILES=tunnel`. The Cloudflare hostname origin is `http://raindrop-rss:38471` on the Compose network, not the host port. `CLOUDFLARE_TUNNEL_TOKEN` stays in `.env`. The page has no login, so that hostname needs a Cloudflare Access application.
 
 ## Import rule
 
@@ -48,4 +49,4 @@ An invalid file keeps the last valid list, shows the error on the page, and send
 
 ## Do not commit
 
-`.env`, `config/settings.toml`, `config/raindrop-token`, `subscriptions/feeds.json`, `data/`, `rss-import-app.json`, and Reeder exports.
+`.env`, `dockertoken`, `config/settings.toml`, `config/raindrop-token`, `subscriptions/feeds.json`, `data/`, `rss-import-app.json`, and Reeder exports.

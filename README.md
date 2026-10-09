@@ -48,6 +48,19 @@ The page is at <http://127.0.0.1:38471/>. From another machine:
 ssh -L 38471:127.0.0.1:38471 diego@geekom
 ```
 
+On the Geekom the same page can be reached without that forward. Compose starts a Cloudflare Tunnel only when `.env` contains `COMPOSE_PROFILES=tunnel`. The host port stays on loopback. The tunnel container talks to the app on the Compose network, so the public hostname's origin is `http://raindrop-rss:38471`.
+
+The page has no login. Whoever can open it can add and remove feeds, so create a Cloudflare Access application for that hostname before using it. An allow policy for your email, with a one-time pin, is enough.
+
+In the [Zero Trust dashboard](https://one.dash.cloudflare.com/), create a tunnel. The install page offers `brew` and `cloudflared service install` for whatever OS is selected. Skip those. The connector is the `cloudflared` container, and the token inside the dashboard command is the only value to copy. Add both lines to `.env` on the Geekom:
+
+```
+COMPOSE_PROFILES=tunnel
+CLOUDFLARE_TUNNEL_TOKEN=the-token-from-the-dashboard
+```
+
+Set the hostname's service to `http://raindrop-rss:38471`, then `docker compose up -d`. A machine that only uses the loopback page leaves those two lines commented out.
+
 Enable Docker at boot (`systemctl enable docker`) so the hourly check returns after a restart.
 
 To work on the code:
