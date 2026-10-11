@@ -71,7 +71,7 @@ Invalid article payloads also need review. Invalid credentials or destination ha
 
 Call `tg` using an argument array with the message as one argument, not shell interpolation. `tg` posts that text to Telegram with the bot token for the named profile. Settle the command packaging before deployment. Give the notification subprocess a timeout. An alert failure is logged and retried next pass without blocking article delivery.
 
-Send one aggregate message when a new failure incident occurs and one when that incident resolves. Persist incident state so restarts do not spam messages. A continuing unchanged incident stays quiet. Report missing-date skips as counts when they first occur, not one message per article. Routine successful passes log a summary without sending Telegram messages.
+Send one aggregate message when a new failure incident occurs and one when that incident resolves. Persist incident state so restarts do not spam messages. A continuing unchanged incident stays quiet. Feed publisher errors and missing-date skips are tracked on the GUI dashboard and do not alert Telegram, preventing alert noise from transient network hiccups. Routine successful passes log a summary without sending Telegram messages.
 
 Use a personal Raindrop test token, which the official API supports for access to one's own account. Mount credentials/settings read-only, and the feed-file directory and SQLite data read-write (mount the directory so atomic feed-file replacement works); keep credentials out of the image and repository. Logs contain counts and sanitized errors, with tokens and secret URL query values redacted.
 

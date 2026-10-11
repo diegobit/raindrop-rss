@@ -45,7 +45,7 @@ An invalid file keeps the last valid list, shows the error on the page, and send
 
 ## Telegram
 
-`tg_command` is an argv. The alert text is one extra argument, never a shell string. The default is `tg --`. `tg` is a host command, not a file in this repository; mount it, and any secret files it reads, from a gitignored `compose.override.yaml`. A missing binary, a non-zero exit, or a timeout is logged and the pass still saves articles. The incident list is updated only after a successful alert, so the next pass retries. One message when an incident starts, one when it clears. An unchanged incident stays quiet.
+`tg_command` is an argv. The alert text is one extra argument, never a shell string. The default is `tg --`. `tg` is a host command, not a file in this repository; mount it, and any secret files it reads, from a gitignored `compose.override.yaml`. A missing binary, a non-zero exit, or a timeout is logged and the pass still saves articles. The incident list is updated only after a successful alert, so the next pass retries. One message when an incident starts, one when it clears. An unchanged incident stays quiet. Feed publisher errors and missing publication dates are tracked on the GUI and do not alert Telegram, preventing alert noise from transient publisher downtime.
 
 ## Do not commit
 

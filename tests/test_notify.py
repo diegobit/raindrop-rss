@@ -57,7 +57,7 @@ class Incidents(Harness):
         self.settings = type(self.settings)(**{**self.settings.__dict__,
                                                'tg_command': ('tg', '-p', 'alerts')})
         self.url = f'{FEED_BASE}/alpha.xml?key=supersecret'
-        self.subscribe('alpha', tag='Alpha', url=self.url)
+        self.feeds_file.write_text(json.dumps([{'id': 'alpha', 'url': self.url, 'tag': 'Alpha'}]))
         self.db = self.state()
 
     def bridge_with_notify(self, succeed=True):
@@ -74,36 +74,51 @@ class Incidents(Harness):
         self.assertEqual(self.db.feed('alpha')['health'], 'healthy')
         self.assertEqual(self.sent, [])
 
-    def test_one_alert_per_incident_then_silence_then_one_recovery(self):
+    def test_publisher_failures_do_not_send_alerts(self):
         self.http.fail(self.url, requests.ConnectionError('down'))
+        self.bridge_with_notify().run_pass()
+        self.assertEqual(self.db.feed('alpha')['health'], 'error')
+        self.assertEqual(self.sent, [])
+
+    def test_missing_dates_do_not_send_alerts(self):
+        items = [{'title': f'n{n}', 'link': f'https://a.test/{n}'} for n in range(12)]
+        self.http.route(self.url, rss(items))
+        bridge = self.bridge_with_notify()
+        bridge.run_pass()
+        self.assertEqual(self.db.feed('alpha')['missing_dates'], 12)
+        self.assertEqual(self.sent, [])
+
+    def test_one_alert_per_incident_then_silence_then_one_recovery(self):
+        self.feeds_file.write_text('nonsense')
         bridge = self.bridge_with_notify()
         bridge.run_pass()
         self.assertEqual(len(self.sent), 1)
         self.assertIn('Failures:', self.messages()[0])
-        self.assertIn('Publisher failure', self.messages()[0])
+        self.assertIn('Feed configuration invalid', self.messages()[0])
 
         bridge.run_pass()
         bridge.run_pass()
         self.assertEqual(len(self.sent), 1, 'an unchanged incident must stay quiet')
 
-        self.http.route(self.url, rss([]))
+        self.feeds_file.write_text(json.dumps([{'id': 'alpha', 'url': self.url, 'tag': 'Alpha'}]))
         bridge.run_pass()
         self.assertEqual(len(self.sent), 2)
         self.assertIn('Resolved:', self.messages()[1])
 
     def test_the_message_never_contains_secret_url_query_values(self):
-        self.http.fail(self.url, requests.ConnectionError('down'))
+        self.db.queue([('https://a.test/article?key=supersecret', 'Article', 'Alpha', 100, 75867253)])
+        self.db.set_delivery(1, 'needs_review')
         self.bridge_with_notify().run_pass()
         self.assertNotIn('supersecret', self.messages()[0])
         self.assertIn('redacted', self.messages()[0])
 
     def test_the_configured_profile_is_used_verbatim(self):
-        self.http.fail(self.url, requests.ConnectionError('down'))
+        self.feeds_file.write_text('nonsense')
         self.bridge_with_notify().run_pass()
         self.assertEqual(self.sent[0]['command'], ('tg', '-p', 'alerts'))
 
     def test_a_failed_notification_is_retried_on_the_next_pass(self):
-        self.http.fail(self.url, requests.ConnectionError('down'))
+        self.feeds_file.write_text('nonsense')
         bridge = self.bridge_with_notify(succeed=False)
         bridge.run_pass()
         self.assertEqual(len(self.sent), 1)
@@ -118,7 +133,7 @@ class Incidents(Harness):
         self.assertEqual(len(self.sent), 3, 'once delivered it goes quiet again')
 
     def test_incident_suppression_survives_a_restart(self):
-        self.http.fail(self.url, requests.ConnectionError('down'))
+        self.feeds_file.write_text('nonsense')
         self.bridge_with_notify().run_pass()
         self.assertEqual(len(self.sent), 1)
         self.db.close()
@@ -127,16 +142,6 @@ class Incidents(Harness):
         self.fake_notify(bridge)
         bridge.run_pass()
         self.assertEqual(len(self.sent), 1, 'a restart must not repeat the alert')
-
-    def test_missing_dates_are_reported_as_one_aggregate_count(self):
-        items = [{'title': f'n{n}', 'link': f'https://a.test/{n}'} for n in range(12)]
-        self.http.route(self.url, rss(items))
-        bridge = self.bridge_with_notify()
-        bridge.run_pass()
-        self.assertEqual(len(self.sent), 1)
-        self.assertIn('12 entries without a publication date', self.messages()[0])
-        bridge.run_pass()
-        self.assertEqual(len(self.sent), 1)
 
     def test_a_review_row_and_a_raindrop_halt_are_both_reported(self):
         self.http.route(self.url,
@@ -155,7 +160,8 @@ class Incidents(Harness):
 
     def test_a_long_incident_list_is_truncated_for_telegram(self):
         for index in range(200):
-            self.subscribe(f'broken{index:03d}')
+            self.db.queue([(f'https://a.test/long-path-{index:03d}', 'Title', 'Tag', 100, 75867253)])
+            self.db.set_delivery(index + 1, 'needs_review')
         bridge = self.bridge_with_notify()
         bridge.run_pass()
         self.assertLessEqual(len(self.messages()[0]), 3500)

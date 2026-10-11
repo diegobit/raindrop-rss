@@ -208,22 +208,17 @@ class Bridge:
     # -- notifications ----------------------------------------------------
 
     def incidents(self):
-        """Current failure incidents keyed so an unchanged one stays quiet."""
+        """Current failure incidents keyed so an unchanged one stays quiet.
+
+        Feed publisher errors and skipped date counts are tracked on the GUI
+        dashboard and excluded from Telegram alerts to avoid noise from
+        transient publisher hiccups or network timeouts.
+        """
         result = {}
         with self.guard:
-            feeds, config_error = list(self.feeds), self.config_error
+            config_error = self.config_error
         if config_error:
             result['configuration'] = 'Feed configuration invalid: ' + config_error
-        rows = self.state.feed_map()
-        for feed in feeds:
-            row = rows.get(feed['id'])
-            if row is None:
-                continue
-            if row['health'] in ('gone', 'error'):
-                result['feed:' + feed['id']] = 'Publisher failure: ' + display_url(feed['url'])
-            if row['missing_dates']:
-                result['dates:' + feed['id']] = (f"{row['missing_dates']} entries without a publication date "
-                                                 f'were skipped: {display_url(feed["url"])}')
         # Keyed per row: each ambiguous delivery is its own incident, so a second
         # one is announced instead of hiding behind the first.
         for row in self.state.rows("SELECT id,url FROM deliveries WHERE state='needs_review' ORDER BY id"):
