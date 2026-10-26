@@ -24,7 +24,7 @@ services:
   # In the Cloudflare hostname, set the origin to http://raindrop-rss:38471.
   # The page has no login; put a Cloudflare Access application on that hostname.
   cloudflared:
-    image: cloudflare/cloudflared:2026.10.0
+    image: cloudflare/cloudflared:2026.10.3
     profiles: [tunnel]
     restart: unless-stopped
     command: tunnel --no-autoupdate run
