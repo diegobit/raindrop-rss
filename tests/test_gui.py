@@ -109,6 +109,15 @@ class Rendering(Live):
         self.assertNotIn('http-equiv="refresh"', form)
         self.assertIn('name="url"', form)
 
+    def test_the_favicon_is_linked_and_served(self):
+        self.serve(self.bridge(self.db))
+        _, page = self.get()
+        self.assertIn('<link rel="icon" href="/favicon.svg" type="image/svg+xml">', page)
+        with urllib.request.urlopen(self.base + '/favicon.svg', timeout=5) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers.get_content_type(), 'image/svg+xml')
+            self.assertIn('<svg', response.read().decode('utf-8'))
+
     def test_html_in_a_tag_or_error_is_escaped(self):
         self.write_feeds([{'id': 'x', 'url': 'https://x.test/f', 'tag': '<script>alert(1)</script>'}])
         bridge = self.bridge(self.db)

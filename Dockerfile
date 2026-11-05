@@ -18,6 +18,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
 COPY raindrop_rss ./raindrop_rss
+COPY favicon.svg ./favicon.svg
 
 # Bind-mount targets only: config (ro), subscriptions (rw dir), and data (rw).
 # Compose runs the container as the host user who owns those paths, so nothing

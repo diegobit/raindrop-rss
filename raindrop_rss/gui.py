@@ -7,6 +7,7 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from .config import ConfigError, display_url, normalize_url
@@ -16,6 +17,7 @@ log = logging.getLogger(__name__)
 FORM_LIMIT = 4096
 SOCKET_TIMEOUT = 15
 REFRESH_SECONDS = 30
+FAVICON_PATH = Path(__file__).resolve().parent.parent / 'favicon.svg'
 
 HEALTH = {
     'pending': ('pending', '<circle cx="8" cy="8" r="4.25" fill="none" stroke="currentColor" stroke-width="1.6"/>'),
@@ -128,7 +130,9 @@ class Page:
             '<!doctype html><html lang="en"><head><meta charset="utf-8">',
             '<meta name="viewport" content="width=device-width, initial-scale=1">',
             f'<meta http-equiv="refresh" content="{REFRESH_SECONDS};url=/">' if refresh else '',
-            '<title>Raindrop RSS</title><style>', STYLE, '</style></head><body>',
+            '<title>Raindrop RSS</title>',
+            '<link rel="icon" href="/favicon.svg" type="image/svg+xml">',
+            '<style>', STYLE, '</style></head><body>',
             '<h1>Raindrop RSS</h1>',
         ]
 
@@ -280,9 +284,9 @@ class Handler(BaseHTTPRequestHandler):
     def log_error(self, fmt, *args):
         log.debug('gui request rejected')
 
-    def reply(self, status, body):
+    def reply(self, status, body, content_type='text/html; charset=utf-8'):
         self.send_response(status)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(body)))
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Content-Security-Policy',
@@ -296,6 +300,13 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == '/':
                 self.reply(200, page.render())
+            elif path == '/favicon.svg':
+                try:
+                    body = FAVICON_PATH.read_bytes()
+                except OSError:
+                    self.reply(404, b'<!doctype html><p>Not found.')
+                else:
+                    self.reply(200, body, 'image/svg+xml')
             elif path == '/add':
                 self.reply(200, page.form())
             elif path == '/remove':

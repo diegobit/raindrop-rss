@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Ripples aligned at the base like a splash">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF7A33"/>
+      <stop offset="1" stop-color="#F0500B"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <g fill="none" stroke="#fff">
+    <path d="M256 84C340 190 368 248 368 302A112 112 0 0 1 144 302C144 248 172 190 256 84Z" stroke-width="27.78" transform="translate(256 450) scale(1.152) translate(-256 -414)"/>
+    <path d="M256 84C340 190 368 248 368 302A112 112 0 0 1 144 302C144 248 172 190 256 84Z" stroke-width="40.61" transform="translate(256 450) scale(.788) translate(-256 -414)"/>
+    <path d="M256 84C340 190 368 248 368 302A112 112 0 0 1 144 302C144 248 172 190 256 84Z" stroke-width="75.47" transform="translate(256 450) scale(.424) translate(-256 -414)"/>
+  </g>
+</svg>
